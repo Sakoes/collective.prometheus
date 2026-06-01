@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 from os.path import join
-import sys
 
-version = '1.6.1'
+version = '2.0.0'
 readme = open("README.rst").read()
 history = open(join('docs', 'HISTORY.txt')).read()
 
-install_requires = ['setuptools']
-if sys.version_info < (2, 5):
-    install_requires.append('threadframe')
+install_requires = [
+    'setuptools',
+    'prometheus_client>=0.17',
+]
 
 setup(
     name='collective.prometheus',
@@ -19,7 +19,6 @@ setup(
         'Programming Language :: Python',
         'Framework :: Plone',
         'Framework :: ZODB',
-        'Framework :: Zope2',
         'Intended Audience :: Developers',
         'Intended Audience :: System Administrators',
         'Programming Language :: Python',
