@@ -26,17 +26,42 @@ zodb_object_loads_total                        counter  db
 zodb_object_stores_total                       counter  db
 zope_connection_active_objects                 gauge    db, connection
 zope_connection_total_objects                  gauge    db, connection
+plone_version_info                             gauge    plone_version, cmf_version
+plone_catalog_size                             gauge    —
+plone_catalog_index_size                       gauge    index
+plone_content_objects                          gauge    portal_type
+plone_users_total                              gauge    —
+plone_groups_total                             gauge    —
 ============================================== ======== =================
 
 The ``zope_*_threads`` and ``zope_request_queue_length`` gauges are only
 emitted when ZServer is available (install with the ``zserver`` extra).
+The ``plone_*`` metrics are emitted only when ``Products.CMFPlone`` is
+importable (install with the ``plone`` extra, or rely on Plone already
+being present in the instance).
 Standard ``process_*`` and ``python_*`` metrics from ``prometheus_client``
 are also exposed.
+
+Endpoints
+---------
+
+* ``/@@metrics`` — Zope/process/ZODB metrics. Works at the Zope
+  application root and inside any traversable object. Always safe to
+  scrape, even on bare-Zope (non-Plone) deployments.
+* ``/<site_id>/@@metrics`` — adds Plone metrics
+  (``plone_catalog_size``, ``plone_catalog_index_size``,
+  ``plone_content_objects``, ``plone_users_total``,
+  ``plone_groups_total``, ``plone_version_info``). This is the
+  canonical scrape target for a Plone site.
 
 Installation (using Buildout)
 -----------------------------
 
 Add ``collective.prometheus`` to your instance eggs in ``buildout.cfg``.
+
+On a bare-Zope install, only ``zope_*`` and ``zodb_*`` metrics are
+exposed. Install with ``pip install collective.prometheus[plone]`` (or
+add ``Products.CMFPlone`` separately) to enable the ``plone_*`` metrics.
 
 Usage
 -----
@@ -73,6 +98,12 @@ Example PromQL
 
     # Worker saturation
     zope_busy_threads / zope_total_threads
+
+    # Top 10 most common content types
+    topk(10, plone_content_objects)
+
+    # Catalog growth rate (objects/sec) over the last hour
+    deriv(plone_catalog_size[1h])
 
 Security
 --------

@@ -19,6 +19,14 @@ try:
 except Exception:
     Z_SERVER = False
 
+try:
+    from Products.CMFCore.utils import getToolByName
+    from Products.CMFPlone import __version__ as PLONE_VERSION
+    PLONE_AVAILABLE = True
+except ImportError:
+    PLONE_AVAILABLE = False
+    PLONE_VERSION = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,16 +164,145 @@ class _ZopeCollector(object):
         yield total
 
 
+class _PloneCollector(object):
+    """Per-scrape collector for Plone-domain metrics.
+
+    Only registered when PLONE_AVAILABLE. Sub-collectors are isolated;
+    one failure won't blank a scrape.
+    """
+
+    def __init__(self, request, context):
+        self._request = request
+        self._context = self._resolve_site(context)
+
+    @staticmethod
+    def _resolve_site(context):
+        """Defensive: ensure context has Plone tools.
+
+        With ZCML restricted to IPloneSiteRoot this short-circuits on
+        the first check. Walk one level if a non-site context slips in
+        (e.g. test harness or stray re-registration); fall back to the
+        original context (sub-collectors fail-safe via `_safe`).
+        """
+        if getToolByName(context, 'portal_catalog', None) is not None:
+            return context
+        try:
+            for _id, obj in context.objectItems():
+                if getToolByName(obj, 'portal_catalog', None) is not None:
+                    return obj
+        except Exception:
+            pass
+        return context
+
+    def _safe(self, name, gen):
+        try:
+            yield from gen()
+        except Exception:
+            logger.exception("collector %s failed", name)
+
+    def collect(self):
+        sub_collectors = (
+            ('ploneversion', self._collect_version, True),
+            ('plonecatalog', self._collect_catalog, True),
+            ('plonecontent', self._collect_content, True),
+            ('ploneusers',   self._collect_users,   True),
+        )
+        for name, fn, enabled in sub_collectors:
+            if enabled:
+                yield from self._safe(name, fn)
+
+    def _collect_version(self):
+        g = _gauge(
+            'plone_version_info',
+            'Plone version information (always 1).',
+            ['plone_version', 'cmf_version'],
+        )
+        cmf = ''
+        try:
+            from Products.CMFCore import __version__ as cmf
+        except Exception:
+            cmf = ''
+        g.add_metric([PLONE_VERSION or '', cmf or ''], 1)
+        yield g
+
+    def _collect_catalog(self):
+        catalog = getToolByName(self._context, 'portal_catalog')
+        size = _gauge('plone_catalog_size',
+                      'Number of objects indexed in portal_catalog.')
+        size.add_metric([], len(catalog))
+        yield size
+
+        idx_size = _gauge(
+            'plone_catalog_index_size',
+            'Number of indexed values per portal_catalog index.',
+            ['index'],
+        )
+        for idx_name in catalog.indexes():
+            idx = catalog.Indexes[idx_name]
+            n = getattr(idx, 'numObjects', None)
+            if callable(n):
+                idx_size.add_metric([idx_name], n())
+        yield idx_size
+
+    def _collect_content(self):
+        catalog = getToolByName(self._context, 'portal_catalog')
+        g = _gauge(
+            'plone_content_objects',
+            'Number of catalogued content objects per portal_type.',
+            ['portal_type'],
+        )
+        search = getattr(catalog, 'unrestrictedSearchResults',
+                         catalog.searchResults)
+        for ptype in catalog.uniqueValuesFor('portal_type'):
+            n = len(search(portal_type=ptype))
+            g.add_metric([ptype], n)
+        yield g
+
+    def _collect_users(self):
+        acl = getToolByName(self._context, 'acl_users')
+        users = _gauge('plone_users_total',
+                       'Number of users known to acl_users.')
+        groups = _gauge('plone_groups_total',
+                        'Number of groups known to acl_users.')
+
+        src = getattr(acl, 'source_users', None)
+        if src is not None and hasattr(src, 'getUserIds'):
+            n_users = len(src.getUserIds())
+        else:
+            n_users = len(acl.searchUsers())
+        users.add_metric([], n_users)
+
+        n_groups = 0
+        grp = getattr(acl, 'source_groups', None)
+        if grp is not None and hasattr(grp, 'getGroupIds'):
+            n_groups = len(grp.getGroupIds())
+        groups.add_metric([], n_groups)
+
+        yield users
+        yield groups
+
+
 class Prometheus(BrowserView):
+    """Zope-only metrics. Registered for=*; safe at app root."""
+
+    _include_plone = False
 
     def __call__(self, *args, **kwargs):
         registry = CollectorRegistry(auto_describe=True)
         registry.register(PROCESS_COLLECTOR)
         registry.register(PLATFORM_COLLECTOR)
         registry.register(_ZopeCollector(self.request, self.context))
+        if self._include_plone and PLONE_AVAILABLE:
+            registry.register(_PloneCollector(self.request, self.context))
 
         encoder, content_type = choose_encoder(
             self.request.getHeader('Accept', ''))
         self.request.response.setHeader('Content-Type', content_type)
         self.request.response.setHeader('Cache-Control', 'no-cache')
         return encoder(registry)
+
+
+class PrometheusPlone(Prometheus):
+    """Zope + Plone metrics. Registered for=IPloneSiteRoot."""
+
+    _include_plone = True

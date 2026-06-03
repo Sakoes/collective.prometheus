@@ -1,5 +1,15 @@
 2.0.0 (UNRELEASED)
 
+  * Restrict Plone collectors to IPloneSiteRoot; root scrape
+    (/@@metrics) now returns Zope-only metrics instead of
+    AttributeError tracebacks for portal_catalog / acl_users. The
+    canonical Plone scrape URL is /<site_id>/@@metrics. Add
+    _resolve_site defensive fallback in _PloneCollector.
+  * Add Plone-domain metrics: plone_version_info, plone_catalog_size,
+    plone_catalog_index_size, plone_content_objects, plone_users_total,
+    plone_groups_total. Enabled automatically when CMFPlone is importable;
+    bare-Zope installs are unaffected. New optional ``[plone]`` extra in
+    setup.py.
   * BREAKING: Adopt prometheus_client for exposition. The metrics endpoint
     now sets Content-Type and Cache-Control headers and supports
     OpenMetrics via Accept negotiation.

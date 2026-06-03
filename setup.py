@@ -39,7 +39,8 @@ setup(
     install_requires=install_requires,
     extras_require={
         'zserver': ['Products.ZServerViews>=0.2'],
-        'test': ['plone.app.testing'],
+        'plone':   ['Products.CMFPlone'],
+        'test':    ['plone.app.testing'],
     },
     entry_points="""
     [z3c.autoinclude.plugin]

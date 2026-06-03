@@ -1,12 +1,25 @@
 <configure
     xmlns="http://namespaces.zope.org/zope"
     xmlns:five="http://namespaces.zope.org/five"
-    xmlns:browser="http://namespaces.zope.org/browser">
+    xmlns:browser="http://namespaces.zope.org/browser"
+    xmlns:zcml="http://namespaces.zope.org/zcml">
 
+    <!-- Zope-only metrics; safe at the app root and in non-Plone Zope. -->
     <browser:page
         for="*"
         name="metrics"
         class=".browser.Prometheus"
         permission="zope2.View"
         />
+
+    <!-- Plone-aware metrics; canonical URL: /<site_id>/@@metrics -->
+    <configure zcml:condition="installed Products.CMFPlone">
+      <browser:page
+          for="Products.CMFPlone.interfaces.IPloneSiteRoot"
+          name="metrics"
+          class=".browser.PrometheusPlone"
+          permission="zope2.View"
+          />
+    </configure>
+
 </configure>
