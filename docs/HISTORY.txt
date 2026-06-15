@@ -1,3 +1,39 @@
+2.0.0 (UNRELEASED)
+
+  * Restrict Plone collectors to IPloneSiteRoot; root scrape
+    (/@@metrics) now returns Zope-only metrics instead of
+    AttributeError tracebacks for portal_catalog / acl_users. The
+    canonical Plone scrape URL is /<site_id>/@@metrics. Add
+    _resolve_site defensive fallback in _PloneCollector.
+  * Add Plone-domain metrics: plone_version_info, plone_catalog_size,
+    plone_catalog_index_size, plone_content_objects, plone_users_total,
+    plone_groups_total. Enabled automatically when CMFPlone is importable;
+    bare-Zope installs are unaffected. New optional ``[plone]`` extra in
+    setup.py.
+  * BREAKING: Adopt prometheus_client for exposition. The metrics endpoint
+    now sets Content-Type and Cache-Control headers and supports
+    OpenMetrics via Accept negotiation.
+  * BREAKING: zodb_load_count / zodb_store_count → zodb_object_loads_total /
+    zodb_object_stores_total (correctly typed as counters; sourced from a
+    monotonic accumulator instead of a 15-second window).
+  * BREAKING: per-database metrics now carry a `db` label instead of
+    `_<dbname>` suffixes.
+  * BREAKING: per-connection metrics use `connection` label instead of
+    `thread`. Fixes a bug where connection 0 produced an unlabeled series
+    that collided with later samples.
+  * BREAKING: zope_cache_memory renamed to zope_cache_objects (it counts
+    objects, not bytes — HELP text was wrong).
+  * Add zope_busy_threads, zope_request_queue_length gauges.
+  * Mount prometheus_client.PROCESS_COLLECTOR and PLATFORM_COLLECTOR.
+  * Drop Python <2.5 threadframe support; use sys._current_frames and
+    __self__ directly.
+  * Each sub-collector is now isolated: one failure no longer blanks the
+    scrape.
+  * NOTE: zodb_object_loads_total and zodb_object_stores_total are
+    process-lifetime accumulators and reset to zero on Zope restart.
+    This is standard Prometheus counter behavior — dashboards must use
+    rate() / increase() rather than reading the raw value.
+
 1.6.1
 
   * Fix metric naming for thread-local metrics
